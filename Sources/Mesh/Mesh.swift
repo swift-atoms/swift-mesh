@@ -143,7 +143,7 @@ extension Mesh {
             zip(faces, areas).forEach { face, area in
                 face.vertices.forEach { index in
                     let position = Int(bitPattern: index)
-                    sums[position] = sums[position] + area
+                    sums[position] += area
                 }
             }
             return sums.map(Self.unit)
