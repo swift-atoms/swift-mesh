@@ -502,3 +502,98 @@ extension `Mesh Tests` {
         }
     }
 }
+
+extension `Mesh Tests` {
+    @Suite
+    struct `Mesh teapot contracts` {
+        /// The faces of the patches in a range, of a teapot cut `divisions` times along each side of a patch.
+        private func faces(of patches: Range<Int>, divisions: Int) -> Range<Int> {
+            (patches.lowerBound * divisions * divisions)..<(patches.upperBound * divisions * divisions)
+        }
+
+        private func centre(_ polygon: Polygon<Position>) -> Vector<3, Double> {
+            var sum = Vector<3, Double>(repeating: 0)
+            for corner in polygon.vertices { sum += corner.coordinates }
+            return sum.scaled(by: 1 / Double(polygon.vertices.count))
+        }
+
+        @Test(arguments: [1, 4, 9] as [Cardinal])
+        func `Thirty-two patches, each a grid of its own`(divisions: Cardinal) {
+            let teapot = Mesh<Position>.teapot(divisions: divisions)
+            let cells = Int(bitPattern: divisions)
+            #expect(teapot.vertices.count == 32 * (cells + 1) * (cells + 1))
+            #expect(teapot.faces.count == 32 * cells * cells)
+            #expect(teapot.faces.allSatisfy { $0.vertices.count == 4 })
+        }
+
+        @Test
+        func `It stands on z = 0, is 3.15 high and reaches from the handle at x = -3 to the spout`() {
+            let teapot = Mesh<Position>.teapot(divisions: 8)
+            let xs = teapot.vertices.map(\.x)
+            let ys = teapot.vertices.map(\.y)
+            let zs = teapot.vertices.map(\.z)
+            #expect(zs.min() == 0)
+            #expect(zs.max() == 3.15)
+            #expect(xs.min() == -3)
+            #expect((xs.max() ?? 0) > 3.3 && (xs.max() ?? 0) < 3.525)
+            #expect(ys.min() == -2 && ys.max() == 2)
+        }
+
+        @Test
+        func `The corners of Newell's patches are vertices`() {
+            let teapot = Mesh<Position>.teapot(divisions: 3)
+            let vertices = Set(teapot.vertices)
+            let corners: [Position] = [
+                Point(x: 0, y: 0, z: 3.15), Point(x: 0, y: 0, z: 0), Point(x: 1.4, y: 0, z: 2.4), Point(x: 0, y: -1.5, z: 2.4),
+                Point(x: -2, y: 0, z: 0.9), Point(x: 0, y: 1.5, z: 0.15), Point(x: 0.2, y: 0, z: 2.7), Point(x: 0, y: 1.3, z: 2.4),
+                Point(x: -1.6, y: 0, z: 2.025), Point(x: -3, y: 0, z: 1.8), Point(x: -1.9, y: 0, z: 0.6),
+                Point(x: 1.7, y: 0, z: 1.425), Point(x: 1.7, y: 0, z: 0.6), Point(x: 3.3, y: 0, z: 2.4), Point(x: 2.8, y: 0, z: 2.4),
+                Point(x: 3.2, y: 0, z: 2.4),
+            ]
+            for corner in corners { #expect(vertices.contains(corner)) }
+        }
+
+        @Test
+        func `Turning y into -y maps the teapot onto itself`() {
+            let teapot = Mesh<Position>.teapot(divisions: 5)
+            for vertex in teapot.vertices {
+                let mirrored = teapot.vertices.contains { other in
+                    abs(other.x - vertex.x) < 1e-12 && abs(other.y + vertex.y) < 1e-12 && abs(other.z - vertex.z) < 1e-12
+                }
+                #expect(mirrored)
+            }
+        }
+
+        @Test
+        func `The body and the lid face away from the axis, the cover up and the bottom down`() {
+            let divisions = 6
+            let teapot = Mesh<Position>.teapot(divisions: 6)
+            let normals: [Vector<3, Double>] = teapot.normals(per: .face)
+            for face in faces(of: 4..<12, divisions: divisions) {
+                let centre = centre(teapot.polygon(at: `Mesh Tests`.faces(teapot)[face]))
+                #expect(normals[face].x * centre.x + normals[face].y * centre.y > 0)
+            }
+            for face in faces(of: 24..<28, divisions: divisions) { #expect(normals[face].z > 0) }
+            for face in faces(of: 28..<32, divisions: divisions) { #expect(normals[face].z < 0) }
+        }
+
+        @Test
+        func `The handle and the spout face away from the plane y = 0, each half the mirror image of the other`() {
+            let divisions = 6
+            let teapot = Mesh<Position>.teapot(divisions: 6)
+            let areas: [Vector<3, Double>] = teapot.areas()
+            for face in faces(of: 12..<18, divisions: divisions) {
+                let centre = centre(teapot.polygon(at: `Mesh Tests`.faces(teapot)[face]))
+                #expect(areas[face].y * centre.y > 0)
+            }
+            for pair in [12, 14, 16, 18] {
+                var near = Vector<3, Double>(repeating: 0)
+                var far = Vector<3, Double>(repeating: 0)
+                for face in faces(of: pair..<(pair + 1), divisions: divisions) { near += areas[face] }
+                for face in faces(of: (pair + 1)..<(pair + 2), divisions: divisions) { far += areas[face] }
+                #expect(near.y < 0)
+                #expect(abs(near.x - far.x) < 1e-9 && abs(near.y + far.y) < 1e-9 && abs(near.z - far.z) < 1e-9)
+            }
+        }
+    }
+}

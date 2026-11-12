@@ -223,6 +223,127 @@ extension Mesh {
 }
 
 extension Mesh {
+
+    /// Martin Newell's teapot of 1975 as he drew it: thirty-two bicubic Bézier patches, each cut into
+    /// `divisions` by `divisions` quadrilaterals, with a bottom added.
+    ///
+    /// It stands on the plane z = 0 around the z axis and is 3.15 high. The body is 2 at its widest, the
+    /// spout reaches x = 3.525 and the handle x = −3.0, and y → −y maps the teapot onto itself.
+    ///
+    /// The patches follow one another in this order: four of the rim, eight of the body, four of the handle,
+    /// four of the spout, eight of the lid and four of the bottom. Each brings its own
+    /// (`divisions` + 1)² vertices, so vertices on an edge two patches share are listed once for each.
+    /// Every face is counterclockwise seen from outside the teapot. A quarter of a circle is Newell's own: its
+    /// control points stand at 0.56 of the radius, not at the 0.5523 that fits a circle best.
+    public static func teapot<Scalar: BinaryFloatingPoint>(divisions: Cardinal) -> Self where Vertex == Point<3, Scalar> {
+        typealias Profile = [(radius: Scalar, height: Scalar)]
+        typealias Rib = (inner: (x: Scalar, z: Scalar), outer: (x: Scalar, z: Scalar), half: Scalar)
+
+        let roundness: Scalar = 0.56
+
+        let rim: Profile = [(1.4, 2.4), (1.3375, 2.53125), (1.4375, 2.53125), (1.5, 2.4)]
+        let shoulder: Profile = [(1.5, 2.4), (1.75, 1.875), (2, 1.35), (2, 0.9)]
+        let belly: Profile = [(2, 0.9), (2, 0.45), (1.5, 0.225), (1.5, 0.15)]
+        let knob: Profile = [(0, 3.15), (0.8, 3.15), (0, 2.85), (0.2, 2.7)]
+        let cover: Profile = [(0.2, 2.7), (0.4, 2.55), (1.3, 2.55), (1.3, 2.4)]
+        let bottom: Profile = [(1.5, 0.15), (1.5, 0.075), (1.425, 0), (0, 0)]
+
+        let grip: [Rib] = [
+            ((-1.6, 2.025), (-1.5, 2.25), 0.3),
+            ((-2.3, 2.025), (-2.5, 2.25), 0.3),
+            ((-2.7, 2.025), (-3.0, 2.25), 0.3),
+            ((-2.7, 1.8), (-3.0, 1.8), 0.3),
+        ]
+        let hold: [Rib] = [
+            ((-2.7, 1.8), (-3.0, 1.8), 0.3),
+            ((-2.7, 1.575), (-3.0, 1.35), 0.3),
+            ((-2.5, 1.125), (-2.65, 0.9375), 0.3),
+            ((-2.0, 0.9), (-1.9, 0.6), 0.3),
+        ]
+        let neck: [Rib] = [
+            ((1.7, 1.425), (1.7, 0.6), 0.66),
+            ((2.6, 1.425), (3.1, 0.825), 0.66),
+            ((2.3, 2.1), (2.4, 2.025), 0.25),
+            ((2.7, 2.4), (3.3, 2.4), 0.25),
+        ]
+        let lip: [Rib] = [
+            ((2.7, 2.4), (3.3, 2.4), 0.25),
+            ((2.8, 2.475), (3.525, 2.49375), 0.25),
+            ((2.9, 2.475), (3.45, 2.5125), 0.15),
+            ((2.8, 2.4), (3.2, 2.4), 0.15),
+        ]
+
+        /// A profile turned a quarter of the way round the z axis, `quarter` quarter turns on.
+        func turned(_ profile: Profile, quarter: Int) -> [[Vertex]] {
+            profile.map { radius, height in
+                let arc: [(x: Scalar, y: Scalar)] = [
+                    (radius, 0), (radius, -roundness * radius), (roundness * radius, -radius), (0, -radius),
+                ]
+                return arc.map { point in
+                    switch quarter % 4 {
+                    case 1: return Point(x: point.y, y: -point.x, z: height)
+                    case 2: return Point(x: -point.x, y: -point.y, z: height)
+                    case 3: return Point(x: -point.y, y: point.x, z: height)
+                    default: return Point(x: point.x, y: point.y, z: height)
+                    }
+                }
+            }
+        }
+
+        /// Half of a tube along ribs in the plane y = 0: the side at negative y, or its mirror image.
+        func swept(_ ribs: [Rib], mirrored: Bool) -> [[Vertex]] {
+            ribs.map { inner, outer, half in
+                let row: [Vertex] = [
+                    Point(x: inner.x, y: 0, z: inner.z), Point(x: inner.x, y: -half, z: inner.z),
+                    Point(x: outer.x, y: -half, z: outer.z), Point(x: outer.x, y: 0, z: outer.z),
+                ]
+                return mirrored ? row.reversed().map { Point(x: $0.x, y: -$0.y, z: $0.z) } : row
+            }
+        }
+
+        func mix(_ from: Vertex, _ to: Vertex, _ parameter: Scalar) -> Vertex {
+            Point(
+                x: from.x * (1 - parameter) + to.x * parameter,
+                y: from.y * (1 - parameter) + to.y * parameter,
+                z: from.z * (1 - parameter) + to.z * parameter
+            )
+        }
+
+        /// The point of a cubic Bézier curve through four control points at a parameter.
+        func curve(_ points: [Vertex], _ parameter: Scalar) -> Vertex {
+            let first = mix(mix(points[0], points[1], parameter), mix(points[1], points[2], parameter), parameter)
+            let second = mix(mix(points[1], points[2], parameter), mix(points[2], points[3], parameter), parameter)
+            return mix(first, second, parameter)
+        }
+
+        let quarters = [0, 1, 2, 3]
+        var nets: [[[Vertex]]] = []
+        for profile in [rim, shoulder, belly] {
+            nets += quarters.map { turned(profile, quarter: $0) }
+        }
+        for ribs in [grip, hold, neck, lip] {
+            nets.append(swept(ribs, mirrored: false))
+            nets.append(swept(ribs, mirrored: true))
+        }
+        for profile in [knob, cover, bottom] {
+            nets += quarters.map { turned(profile, quarter: $0) }
+        }
+
+        let cells = Scalar(Int(bitPattern: divisions))
+        var teapot = Self.empty
+        for net in nets {
+            let patch = Self(columns: divisions, rows: divisions) { column, row in
+                let along = Scalar(Int(bitPattern: column)) / cells
+                let across = Scalar(Int(bitPattern: row)) / cells
+                return curve(net.map { curve($0, along) }, across)
+            }
+            teapot = teapot.appending(patch)
+        }
+        return teapot
+    }
+}
+
+extension Mesh {
     internal init(validated vertices: [Vertex], faces: [Polygon<Index<Vertex>>]) {
         self.vertices = vertices
         self.faces = faces
