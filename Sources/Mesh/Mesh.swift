@@ -223,6 +223,33 @@ extension Mesh {
 }
 
 extension Mesh {
+    /// The box with its edges along the axes between two opposite corners: eight vertices and six quads.
+    ///
+    /// The vertices are the corners in the order of a count in binary, x changing first:
+    /// (x₀, y₀, z₀), (x₁, y₀, z₀), (x₀, y₁, z₀), (x₁, y₁, z₀), and the same four at z₁, where the first of
+    /// each pair is `lower`'s coordinate and the second `upper`'s. The faces are listed as the sides toward
+    /// lower x, upper x, lower y, upper y, lower z and upper z, each counterclockwise seen from outside
+    /// when `lower` is below `upper` along every axis. It is closed and has twelve distinct edges.
+    public static func box<Scalar: BinaryFloatingPoint>(
+        lower: Point<3, Scalar>,
+        upper: Point<3, Scalar>
+    ) -> Self where Vertex == Point<3, Scalar> {
+        let vertices: [Vertex] = (0..<8).map { corner in
+            Point(
+                x: corner & 1 == 0 ? lower.x : upper.x,
+                y: corner & 2 == 0 ? lower.y : upper.y,
+                z: corner & 4 == 0 ? lower.z : upper.z
+            )
+        }
+        let sides = [[0, 4, 6, 2], [1, 3, 7, 5], [0, 1, 5, 4], [2, 6, 7, 3], [0, 2, 3, 1], [4, 5, 7, 6]]
+        let faces = sides.map { side in
+            Polygon(Self.index(side[0]), Self.index(side[1]), Self.index(side[2]), Self.index(side[3]))
+        }
+        return Self(validated: vertices, faces: faces)
+    }
+}
+
+extension Mesh {
 
     /// Martin Newell's teapot of 1975 as he drew it: thirty-two bicubic Bézier patches, each cut into
     /// `divisions` by `divisions` quadrilaterals, with a bottom added.

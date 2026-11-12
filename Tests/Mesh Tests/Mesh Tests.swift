@@ -597,3 +597,58 @@ extension `Mesh Tests` {
         }
     }
 }
+
+extension `Mesh Tests` {
+    @Suite
+    struct `Mesh box contracts` {
+        private let box = Mesh<Position>.box(lower: Point(x: -1, y: 2, z: 0.5), upper: Point(x: 3, y: 2.5, z: 4))
+
+        @Test
+        func `Eight corners in binary order, x changing first`() {
+            #expect(box.vertices.count == 8)
+            #expect(box.vertices.first == Point(x: -1, y: 2, z: 0.5))
+            #expect(box.vertices[1] == Point(x: 3, y: 2, z: 0.5))
+            #expect(box.vertices[2] == Point(x: -1, y: 2.5, z: 0.5))
+            #expect(box.vertices[4] == Point(x: -1, y: 2, z: 4))
+            #expect(box.vertices.last == Point(x: 3, y: 2.5, z: 4))
+            #expect(Set(box.vertices).count == 8)
+        }
+
+        @Test
+        func `Six quads, closed, of genus zero, with twelve edges`() {
+            #expect(box.faces.count == 6)
+            #expect(box.faces.allSatisfy { $0.vertices.count == 4 })
+            #expect(`Mesh Tests`.isClosed(box))
+            #expect(`Mesh Tests`.characteristic(box) == 2)
+            #expect(`Mesh Tests`.edges(box).count == 24)
+        }
+
+        @Test
+        func `The sides face outward, toward lower and upper x, y and z in that order`() {
+            let expected: [Vector<3, Double>] = [
+                Vector([-1, 0, 0]), Vector([1, 0, 0]), Vector([0, -1, 0]), Vector([0, 1, 0]), Vector([0, 0, -1]), Vector([0, 0, 1]),
+            ]
+            #expect(box.normals(per: .face) == expected)
+            let areas: [Vector<3, Double>] = box.areas()
+            #expect(areas.map { `Mesh Tests`.length($0) } == [1.75, 1.75, 14, 14, 2, 2])
+        }
+
+        @Test
+        func `Corners given the other way round turn the box inside out`() {
+            let turned = Mesh<Position>.box(lower: Point(x: 3, y: 2.5, z: 4), upper: Point(x: -1, y: 2, z: 0.5))
+            #expect(Set(turned.vertices) == Set(box.vertices))
+            #expect(`Mesh Tests`.isClosed(turned))
+            let outward: [Vector<3, Double>] = box.normals(per: .face)
+            let inward: [Vector<3, Double>] = turned.normals(per: .face)
+            #expect(inward == outward)
+        }
+
+        @Test
+        func `A box with no depth along an axis still has eight vertices and six faces`() {
+            let flat = Mesh<Position>.box(lower: Point(x: 0, y: 0, z: 0), upper: Point(x: 1, y: 1, z: 0))
+            #expect(flat.vertices.count == 8)
+            #expect(flat.faces.count == 6)
+            #expect(flat.welded.vertices.count == 4)
+        }
+    }
+}
