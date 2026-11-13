@@ -250,6 +250,71 @@ extension Mesh {
 }
 
 extension Mesh {
+    /// A four-sided face cut into `columns` × `rows` cells, with an inset quad for each cell `including`
+    /// chooses, or with one inset strip for each row that has a chosen cell.
+    ///
+    /// The face's corners are taken in order: columns run from the first corner toward the second, and rows
+    /// from the first toward the fourth, so cell (0, 0) touches the first corner. The point of the face at
+    /// (u, v), each from 0 to 1, is the bilinear mix of the corners, which for a flat parallelogram, such as
+    /// a side of `box(lower:upper:)`, is the corner plus u times the first edge plus v times the last. The
+    /// quad of cell (c, r) has the corners at (c + w, r + h), (c + 1 − w, r + h), (c + 1 − w, r + 1 − h) and
+    /// (c + w, r + 1 − h), in cells, where (w, h) is `inset`: the share of a cell's width cut from each side
+    /// along the row and the share of its height cut from top and bottom. Per `.row`, a row's strip runs from
+    /// the left edge of its first chosen cell's quad to the right edge of its last chosen cell's quad.
+    ///
+    /// Each quad has four vertices of its own and turns the same way as the face, so it faces the same side.
+    /// Quads are listed row by row from row 0, and along a row from column 0. `including` is asked once for
+    /// each cell, in that order. Nothing is checked: an inset outside 0 to ½ gives quads that leave their
+    /// cells or turn inside out.
+    public static func cells<Scalar: BinaryFloatingPoint, Failure: Swift::Error>(
+        on face: Ngon<4, Point<3, Scalar>>,
+        columns: Cardinal,
+        rows: Cardinal,
+        inset: (width: Scalar, height: Scalar),
+        per span: Span = .cell,
+        including: (_ column: Ordinal, _ row: Ordinal) throws(Failure) -> Bool
+    ) throws(Failure) -> Self where Vertex == Point<3, Scalar> {
+        let corners = face.vertices.map(\.coordinates)
+        let width = Scalar(Int(bitPattern: columns))
+        let height = Scalar(Int(bitPattern: rows))
+        func point(_ u: Scalar, _ v: Scalar) -> Vertex {
+            let (s, t) = (u / width, v / height)
+            let bottom = corners[0] + (corners[1] - corners[0]).scaled(by: s)
+            let top = corners[3] + (corners[2] - corners[3]).scaled(by: s)
+            return Point(coordinates: bottom + (top - bottom).scaled(by: t))
+        }
+        var vertices: [Vertex] = []
+        var faces: [Polygon<Index<Vertex>>] = []
+        func quad(from left: Scalar, to right: Scalar, row: Scalar) {
+            let (lower, upper) = (row + inset.height, row + 1 - inset.height)
+            let first = vertices.count
+            vertices += [point(left, lower), point(right, lower), point(right, upper), point(left, upper)]
+            faces.append(Polygon(Self.index(first), Self.index(first + 1), Self.index(first + 2), Self.index(first + 3)))
+        }
+        let lines = (0..<Int(bitPattern: rows)).map { row in
+            (0..<Int(bitPattern: columns)).map { column in (column: column, row: row) }
+        }
+        for line in lines {
+            var chosen: [Int] = []
+            for cell in line where try including(Ordinal(UInt(cell.column)), Ordinal(UInt(cell.row))) {
+                chosen.append(cell.column)
+            }
+            guard let first = chosen.first, let last = chosen.last, let row = line.first?.row else { continue }
+            switch span {
+            case .cell:
+                chosen.forEach { column in
+                    quad(from: Scalar(column) + inset.width, to: Scalar(column + 1) - inset.width, row: Scalar(row))
+                }
+
+            case .row:
+                quad(from: Scalar(first) + inset.width, to: Scalar(last + 1) - inset.width, row: Scalar(row))
+            }
+        }
+        return Self(validated: vertices, faces: faces)
+    }
+}
+
+extension Mesh {
 
     /// Martin Newell's teapot of 1975 as he drew it: thirty-two bicubic Bézier patches, each cut into
     /// `divisions` by `divisions` quadrilaterals, with a bottom added.
