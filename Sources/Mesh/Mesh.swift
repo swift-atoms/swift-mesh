@@ -51,6 +51,36 @@ extension Mesh {
     }
 }
 
+extension Mesh {
+
+    /// The mesh whose faces are the polygons in order, each with vertices of its own: the vertices of the
+    /// first polygon, then of the second, and so on, so `polygon(at:)` of face i is polygon i. A mesh of
+    /// quads is this with four vertices to a polygon. Vertices that polygons share are listed once for each;
+    /// `welded` joins them.
+    public init(_ polygons: [Polygon<Vertex>]) {
+        var vertices: [Vertex] = []
+        var faces: [Polygon<Index<Vertex>>] = []
+        faces.reserveCapacity(polygons.count)
+        polygons.forEach { polygon in
+            var next = vertices.count
+            faces.append(
+                polygon.map { _ in
+                    defer { next += 1 }
+                    return Self.index(next)
+                }
+            )
+            vertices.append(contentsOf: polygon.vertices)
+        }
+        self.init(validated: vertices, faces: faces)
+    }
+
+    /// The number of triangles `triangulated` gives, without building them: n − 2 for each face of n
+    /// vertices.
+    public var triangles: Cardinal {
+        Cardinal(UInt(faces.reduce(0) { $0 + $1.vertices.count - 2 }))
+    }
+}
+
 extension Mesh where Vertex: Hashable {
     public var welded: Self {
         var first: [Vertex: Int] = [:]
@@ -147,6 +177,25 @@ extension Mesh {
                 }
             }
             return sums.map(Self.unit)
+        }
+    }
+
+    /// The normals of one element summed from those of another: per `.face` from `.vertex`, each face's
+    /// normal is the unit vector of the sum of its vertices' normals, `normals(per: .vertex)`, in face order.
+    /// That is the face's shade when the surface is drawn smooth but its faces are drawn flat. It smooths only
+    /// over vertices the faces share, so weld a mesh first; a face whose vertices are its own keeps its own
+    /// normal. Per `.vertex` from `.face` is `normals(per: .vertex)`, and from an element to itself is
+    /// `normals(per:)` of it. A zero or non-finite sum gives the zero vector.
+    public func normals<Scalar: BinaryFloatingPoint>(
+        per element: Element,
+        from source: Element
+    ) -> [Vector<3, Scalar>] where Vertex == Point<3, Scalar> {
+        guard element == .face, source == .vertex else { return normals(per: element) }
+        let smooth: [Vector<3, Scalar>] = normals(per: .vertex)
+        return faces.map { face in
+            var sum = Vector<3, Scalar>(repeating: 0)
+            face.vertices.forEach { index in sum += smooth[Int(bitPattern: index)] }
+            return Self.unit(sum)
         }
     }
 
