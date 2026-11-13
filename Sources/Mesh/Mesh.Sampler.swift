@@ -1,27 +1,45 @@
 extension Mesh {
-    /// Draws places on a mesh's surface, each face as likely as its share of the whole area.
+    /// Maps points of the unit cube to places on a mesh's surface so that evenly spread points give evenly
+    /// spread places: every part of the surface as likely as its share of the whole area.
     ///
-    /// It adds up the faces' areas once, so that each draw is a search. A place is a ``Location``: a face
-    /// and a weight for each of its vertices, with which any value given per vertex, such as a position or
-    /// a normal, is interpolated there.
+    /// It cuts each face into the triangles fanned from its first vertex and adds up their areas once, so
+    /// that each place is a search. A place is a ``Location``: a face and a weight for each of its vertices,
+    /// with which any value given per vertex, such as a position or a normal, is interpolated there. The
+    /// three coordinates may come from any source: a random number generator, a stratified grid or a
+    /// low-discrepancy sequence.
     public struct Sampler<Scalar: BinaryFloatingPoint> {
-        /// The mesh it draws from.
+        /// The mesh it maps to.
         public let mesh: Mesh
 
-        /// The area of the faces up to and including each face, in face order.
-        public let running: [Scalar]
+        /// The whole area of the mesh's surface: the sum of its fanned triangles' areas.
+        public let area: Scalar
+
+        /// Each fanned triangle: its face, and the corner of the face it takes after the first.
+        let triangles: [(face: Int, corner: Int)]
+
+        /// The area of the triangles up to and including each triangle, in order.
+        let running: [Scalar]
 
         /// A sampler over a mesh's surface; nil when it has no faces or no area, or an area that is not finite.
         public init?(_ mesh: Mesh) where Vertex == Point<3, Scalar> {
+            var triangles: [(face: Int, corner: Int)] = []
             var running: [Scalar] = []
-            running.reserveCapacity(mesh.faces.count)
             var total: Scalar = 0
-            for area in mesh.areas() as [Vector<3, Scalar>] {
-                total += (area.x * area.x + area.y * area.y + area.z * area.z).squareRoot()
-                running.append(total)
+            for (face, polygon) in mesh.faces.enumerated() {
+                let corners = polygon.vertices.map { mesh.vertices[Int(bitPattern: $0)].coordinates }
+                let origin = corners[0]
+                for (corner, (second, third)) in zip(corners.dropFirst(), corners.dropFirst(2)).enumerated() {
+                    let (p, q) = (second - origin, third - origin)
+                    let (x, y, z) = (p.y * q.z - p.z * q.y, p.z * q.x - p.x * q.z, p.x * q.y - p.y * q.x)
+                    total += (x * x + y * y + z * z).squareRoot() / 2
+                    triangles.append((face, corner + 1))
+                    running.append(total)
+                }
             }
             guard total > 0, total.isFinite else { return nil }
             self.mesh = mesh
+            self.area = total
+            self.triangles = triangles
             self.running = running
         }
     }
@@ -30,57 +48,29 @@ extension Mesh {
 extension Mesh.Sampler: Sendable where Vertex: Sendable, Scalar: Sendable {}
 
 extension Mesh.Sampler {
-    /// The whole area of the mesh's surface.
-    public var area: Scalar { running[running.count - 1] }
-}
-
-extension Mesh.Sampler where Vertex == Point<3, Scalar> {
-
-    /// A place on the surface from three unit draws of a generator, in this order: one picks the face by
-    /// area, and two place it on the face. A triangle is filled evenly, the draws (u, v) folded back across
-    /// its diagonal when u + v > 1 and weighted (1 − u − v, u, v). A quad is weighted bilinearly,
-    /// ((1 − u)(1 − v), u(1 − v), uv, (1 − u)v), which is even for a parallelogram. A larger face is fanned
-    /// from its first vertex into triangles, the one the first draw falls in by its share of the face's
-    /// area, and that triangle filled evenly.
-    public func location<Generator: Swift.RandomNumberGenerator>(using generator: inout Generator) -> Location {
-        let lot = Scalar(generator.unit()) * area
-        var (from, to) = (0, running.count - 1)
+    /// The place for a point (u, v, w) of the unit cube, each coordinate held to 0…1.
+    ///
+    /// u times the area picks the first fanned triangle whose running area reaches it. (v, w) place it on that
+    /// triangle, folded back across its diagonal when v + w > 1: weight 1 − v − w on the face's first vertex,
+    /// v on the triangle's second corner and w on its third, and 0 on the face's other vertices.
+    public func location(_ u: Scalar, _ v: Scalar, _ w: Scalar) -> Location {
+        let lot = held(u) * area
+        let candidates = running.dropLast()
+        var (from, to) = (candidates.startIndex, candidates.endIndex)
         while from < to {
-            let middle = (from + to) / 2
-            if running[middle] < lot { from = middle + 1 } else { to = middle }
+            let middle = from + (to - from) / 2
+            if candidates[middle] < lot { from = middle + 1 } else { to = middle }
         }
-        let face = Index<Polygon<Index<Vertex>>>(_unchecked: Ordinal(UInt(from)))
-        let (u, v) = (Scalar(generator.unit()), Scalar(generator.unit()))
-        let count = mesh.faces[from].vertices.count
-        switch count {
-        case 3:
-            let (a, b) = u + v > 1 ? (1 - u, 1 - v) : (u, v)
-            return Location(face: face, weights: [1 - a - b, a, b])
-
-        case 4:
-            return Location(face: face, weights: [(1 - u) * (1 - v), u * (1 - v), u * v, (1 - u) * v])
-
-        default:
-            let start: Scalar = from == 0 ? 0 : running[from - 1]
-            let share = (lot - start) / (running[from] - start)
-            let triangle = fan(of: from, at: share)
-            let (a, b) = u + v > 1 ? (1 - u, 1 - v) : (u, v)
-            var weights = [Scalar](repeating: 0, count: count)
-            weights[0] = 1 - a - b
-            weights[triangle] = a
-            weights[triangle + 1] = b
-            return Location(face: face, weights: weights)
-        }
+        let triangle = triangles[from]
+        let (v, w) = (held(v), held(w))
+        let (a, b) = v + w > 1 ? (1 - v, 1 - w) : (v, w)
+        var weights = [Scalar](repeating: 0, count: mesh.faces[triangle.face].vertices.count)
+        weights[0] = 1 - a - b
+        weights[triangle.corner] = a
+        weights[triangle.corner + 1] = b
+        return Location(face: Index(_unchecked: Ordinal(UInt(triangle.face))), weights: weights)
     }
 
-    /// The vertex positions of the location's face, weighted by its weights: the place on the surface.
-    public func position(of location: Location) -> Point<3, Scalar> {
-        Point(coordinates: interpolate(mesh.vertices.map(\.coordinates), at: location))
-    }
-
-}
-
-extension Mesh.Sampler {
     /// A vector given per vertex, such as `mesh.normals(per: .vertex)`, interpolated at a location: the
     /// face's vertices' vectors weighted by its weights, in the face's order. A normal so found is not of
     /// unit length in general.
@@ -88,32 +78,28 @@ extension Mesh.Sampler {
         var sum = Vector<3, Scalar>(repeating: 0)
         for (index, weight) in zip(mesh.faces[location.face].vertices, location.weights) {
             let value = values[Int(bitPattern: index)]
-            sum.x = sum.x + weight * value.x
-            sum.y = sum.y + weight * value.y
-            sum.z = sum.z + weight * value.z
+            sum.x += weight * value.x
+            sum.y += weight * value.y
+            sum.z += weight * value.z
         }
         return sum
+    }
+
+    private func held(_ coordinate: Scalar) -> Scalar {
+        Swift.min(Swift.max(coordinate, 0), 1)
     }
 }
 
 extension Mesh.Sampler where Vertex == Point<3, Scalar> {
-    /// The second corner of the triangle, fanned from a face's first vertex, that a share of the face's area falls in.
-    private func fan(of face: Int, at share: Scalar) -> Int {
-        let corners = mesh.faces[face].vertices.map { Int(bitPattern: $0) }
-        let vertices = mesh.vertices
-        let origin = vertices[corners[0]].coordinates
-        let areas = (1..<(corners.count - 1)).map { second -> Scalar in
-            let p = vertices[corners[second]].coordinates - origin
-            let q = vertices[corners[second + 1]].coordinates - origin
-            let (x, y, z) = (p.y * q.z - p.z * q.y, p.z * q.x - p.x * q.z, p.x * q.y - p.y * q.x)
-            return (x * x + y * y + z * z).squareRoot()
+    /// The face's vertex positions weighted by the location's weights: the place on the surface.
+    public func position(of location: Location) -> Point<3, Scalar> {
+        var sum = Vector<3, Scalar>(repeating: 0)
+        for (index, weight) in zip(mesh.faces[location.face].vertices, location.weights) {
+            let value = mesh.vertices[Int(bitPattern: index)].coordinates
+            sum.x += weight * value.x
+            sum.y += weight * value.y
+            sum.z += weight * value.z
         }
-        let total = areas.reduce(0, +)
-        var reached: Scalar = 0
-        for (offset, area) in areas.enumerated() {
-            reached += area
-            if share * total < reached { return offset + 1 }
-        }
-        return corners.count - 2
+        return Point(coordinates: sum)
     }
 }

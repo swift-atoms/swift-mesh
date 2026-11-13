@@ -11,7 +11,6 @@ let package = Package(
         .package(url: "https://github.com/swift-atoms/swift-index.git", branch: "main"),
         .package(url: "https://github.com/swift-atoms/swift-point.git", branch: "main"),
         .package(url: "https://github.com/swift-atoms/swift-polygon.git", branch: "main"),
-        .package(url: "https://github.com/swift-atoms/swift-random.git", branch: "main"),
         .package(url: "https://github.com/swift-atoms/swift-trigonometry.git", branch: "main"),
         .package(url: "https://github.com/swift-atoms/swift-vector.git", branch: "main"),
     ],
@@ -24,7 +23,6 @@ let package = Package(
                 .product(name: "Index", package: "swift-index"),
                 .product(name: "Point", package: "swift-point"),
                 .product(name: "Polygon", package: "swift-polygon"),
-                .product(name: "Random", package: "swift-random"),
                 .product(name: "Trigonometry", package: "swift-trigonometry"),
                 .product(name: "Vector", package: "swift-vector"),
             ]
