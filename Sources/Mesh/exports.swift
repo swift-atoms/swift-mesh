@@ -3,5 +3,6 @@
 @_exported public import Index
 @_exported public import Point
 @_exported public import Polygon
+@_exported public import Random
 @_exported public import Trigonometry
 @_exported public import Vector
