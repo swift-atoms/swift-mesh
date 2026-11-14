@@ -1,5 +1,6 @@
 extension Mesh {
 
+    @inlinable
     public init<Parameter: BinaryFloatingPoint, Failure: Swift::Error>(
         _ patch: Bezier<Vertex>.Patch,
         columns: Cardinal,

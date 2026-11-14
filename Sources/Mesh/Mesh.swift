@@ -1,7 +1,9 @@
+@frozen
 public struct Mesh<Vertex> {
     public let vertices: [Vertex]
     public let faces: [Polygon<Index<Vertex>>]
 
+    @inlinable
     public init(vertices: [Vertex], faces: [Polygon<Index<Vertex>>]) throws(Error) {
         let valid = faces.allSatisfy { face in
             face.vertices.allSatisfy { vertices.indices.contains(Int(bitPattern: $0)) }
@@ -15,8 +17,10 @@ public struct Mesh<Vertex> {
 extension Mesh {
     public static var empty: Self { Self(validated: [], faces: []) }
 
+    @inlinable
     public var reversed: Self { Self(validated: vertices, faces: faces.map(\.reversed)) }
 
+    @inlinable
     public var triangulated: Self {
         var triangles: [Polygon<Index<Vertex>>] = []
         triangles.reserveCapacity(faces.count)
@@ -29,10 +33,12 @@ extension Mesh {
         return Self(validated: vertices, faces: triangles)
     }
 
+    @inlinable
     public func polygon(at face: Index<Polygon<Index<Vertex>>>) -> Polygon<Vertex> {
         faces[face].map { vertices[$0] }
     }
 
+    @inlinable
     public func map<Result, Failure: Swift::Error>(
         _ transform: (Vertex) throws(Failure) -> Result
     ) throws(Failure) -> Mesh<Result> {
@@ -42,6 +48,7 @@ extension Mesh {
         return Mesh<Result>(validated: result, faces: faces.map { face in face.map { $0.retag(Result.self) } })
     }
 
+    @inlinable
     public func appending(_ other: Self) -> Self {
         let offset = vertices.count
         return Self(
@@ -57,6 +64,7 @@ extension Mesh {
     /// first polygon, then of the second, and so on, so `polygon(at:)` of face i is polygon i. A mesh of
     /// quads is this with four vertices to a polygon. Vertices that polygons share are listed once for each;
     /// `welded` joins them.
+    @inlinable
     public init(_ polygons: [Polygon<Vertex>]) {
         var vertices: [Vertex] = []
         var faces: [Polygon<Index<Vertex>>] = []
@@ -76,12 +84,14 @@ extension Mesh {
 
     /// The number of triangles `triangulated` gives, without building them: n − 2 for each face of n
     /// vertices.
+    @inlinable
     public var triangles: Cardinal {
         Cardinal(UInt(faces.reduce(0) { $0 + $1.vertices.count - 2 }))
     }
 }
 
 extension Mesh where Vertex: Hashable {
+    @inlinable
     public var welded: Self {
         var first: [Vertex: Int] = [:]
         var kept: [Vertex] = []
@@ -106,6 +116,7 @@ extension Mesh: Sendable where Vertex: Sendable {}
 
 extension Mesh {
 
+    @inlinable
     public init<Failure: Swift::Error>(
         columns: Cardinal,
         rows: Cardinal,
@@ -146,6 +157,7 @@ extension Mesh {
 
 extension Mesh {
 
+    @inlinable
     public func areas<Scalar: BinaryFloatingPoint>() -> [Vector<3, Scalar>] where Vertex == Point<3, Scalar> {
         faces.map { face in
             let origin = vertices[face.vertices[0]].coordinates
@@ -169,6 +181,7 @@ extension Mesh {
     /// the cross product of two inverted neighbours, so the terms add up to the area vector of a polygon in
     /// that plane. Weighting by face area or by the angle at the corner leans where small and large faces
     /// meet, as at a pole. A corner with an edge of zero length, or a term that is not finite, adds nothing.
+    @inlinable
     public func normals<Scalar: BinaryFloatingPoint>(
         per element: Element
     ) -> [Vector<3, Scalar>] where Vertex == Point<3, Scalar> {
@@ -206,6 +219,7 @@ extension Mesh {
     /// over vertices the faces share, so weld a mesh first; a face whose vertices are its own keeps its own
     /// normal. Per `.vertex` from `.face` is `normals(per: .vertex)`, and from an element to itself is
     /// `normals(per:)` of it. A zero or non-finite sum gives the zero vector.
+    @inlinable
     public func normals<Scalar: BinaryFloatingPoint>(
         per element: Element,
         from source: Element
@@ -219,6 +233,7 @@ extension Mesh {
         }
     }
 
+    @inlinable
     public static func torus<Scalar: BinaryFloatingPoint & Trigonometry.Circular>(
         major: Scalar,
         minor: Scalar,
@@ -240,6 +255,7 @@ extension Mesh {
         }
     }
 
+    @inlinable
     public static func sphere<Scalar: BinaryFloatingPoint & Trigonometry.Circular>(
         radius: Scalar,
         meridians: Cardinal,
@@ -299,6 +315,7 @@ extension Mesh {
     /// each pair is `lower`'s coordinate and the second `upper`'s. The faces are listed as the sides toward
     /// lower x, upper x, lower y, upper y, lower z and upper z, each counterclockwise seen from outside
     /// when `lower` is below `upper` along every axis. It is closed and has twelve distinct edges.
+    @inlinable
     public static func box<Scalar: BinaryFloatingPoint>(
         lower: Point<3, Scalar>,
         upper: Point<3, Scalar>
@@ -335,6 +352,7 @@ extension Mesh {
     /// Quads are listed row by row from row 0, and along a row from column 0. `including` is asked once for
     /// each cell, in that order. Nothing is checked: an inset outside 0 to ½ gives quads that leave their
     /// cells or turn inside out.
+    @inlinable
     public static func cells<Scalar: BinaryFloatingPoint, Failure: Swift::Error>(
         on face: Ngon<4, Point<3, Scalar>>,
         columns: Cardinal,
@@ -396,6 +414,7 @@ extension Mesh {
     /// (`divisions` + 1)² vertices, so vertices on an edge two patches share are listed once for each.
     /// Every face is counterclockwise seen from outside the teapot. A quarter of a circle is Newell's own: its
     /// control points stand at 0.56 of the radius, not at the 0.5523 that fits a circle best.
+    @inlinable
     public static func teapot<Scalar: BinaryFloatingPoint>(divisions: Cardinal) -> Self where Vertex == Point<3, Scalar> {
         typealias Profile = [(radius: Scalar, height: Scalar)]
         typealias Rib = (inner: (x: Scalar, z: Scalar), outer: (x: Scalar, z: Scalar), half: Scalar)
@@ -505,16 +524,19 @@ extension Mesh {
 }
 
 extension Mesh {
+    @inlinable
     internal init(validated vertices: [Vertex], faces: [Polygon<Index<Vertex>>]) {
         self.vertices = vertices
         self.faces = faces
     }
 
+    @inlinable
     internal static func index(_ position: Int) -> Index<Vertex> {
         Index(_unchecked: Ordinal(UInt(position)))
     }
 
-    private static func unit<Scalar: BinaryFloatingPoint>(_ vector: Vector<3, Scalar>) -> Vector<3, Scalar> {
+    @inlinable
+    internal static func unit<Scalar: BinaryFloatingPoint>(_ vector: Vector<3, Scalar>) -> Vector<3, Scalar> {
         let length = vector.dot(vector).squareRoot()
         guard length > 0, length.isFinite else { return Vector(repeating: 0) }
         return vector.map { $0 / length }

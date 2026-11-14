@@ -1,5 +1,6 @@
 extension Mesh {
     /// What one quad of `cells(on:columns:rows:inset:per:including:)` covers.
+    @frozen
     public enum Span: Hashable, Sendable, CaseIterable {
         /// One inset quad for each chosen cell.
         case cell

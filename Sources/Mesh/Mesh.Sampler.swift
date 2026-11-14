@@ -15,12 +15,15 @@ extension Mesh {
         public let area: Scalar
 
         /// Each fanned triangle: its face, and the corner of the face it takes after the first.
+        @usableFromInline
         let triangles: [(face: Int, corner: Int)]
 
         /// The area of the triangles up to and including each triangle, in order.
+        @usableFromInline
         let running: [Scalar]
 
         /// A sampler over a mesh's surface; nil when it has no faces or no area, or an area that is not finite.
+        @inlinable
         public init?(_ mesh: Mesh) where Vertex == Point<3, Scalar> {
             var triangles: [(face: Int, corner: Int)] = []
             var running: [Scalar] = []
@@ -53,6 +56,7 @@ extension Mesh.Sampler {
     /// u times the area picks the first fanned triangle whose running area reaches it. (v, w) place it on that
     /// triangle, folded back across its diagonal when v + w > 1: weight 1 − v − w on the face's first vertex,
     /// v on the triangle's second corner and w on its third, and 0 on the face's other vertices.
+    @inlinable
     public func location(_ u: Scalar, _ v: Scalar, _ w: Scalar) -> Location {
         let lot = held(u) * area
         let candidates = running.dropLast()
@@ -74,6 +78,7 @@ extension Mesh.Sampler {
     /// A vector given per vertex, such as `mesh.normals(per: .vertex)`, interpolated at a location: the
     /// face's vertices' vectors weighted by its weights, in the face's order. A normal so found is not of
     /// unit length in general.
+    @inlinable
     public func interpolate(_ values: [Vector<3, Scalar>], at location: Location) -> Vector<3, Scalar> {
         var sum = Vector<3, Scalar>(repeating: 0)
         for (index, weight) in zip(mesh.faces[location.face].vertices, location.weights) {
@@ -85,13 +90,15 @@ extension Mesh.Sampler {
         return sum
     }
 
-    private func held(_ coordinate: Scalar) -> Scalar {
+    @inlinable
+    internal func held(_ coordinate: Scalar) -> Scalar {
         Swift.min(Swift.max(coordinate, 0), 1)
     }
 }
 
 extension Mesh.Sampler where Vertex == Point<3, Scalar> {
     /// The face's vertex positions weighted by the location's weights: the place on the surface.
+    @inlinable
     public func position(of location: Location) -> Point<3, Scalar> {
         var sum = Vector<3, Scalar>(repeating: 0)
         for (index, weight) in zip(mesh.faces[location.face].vertices, location.weights) {
