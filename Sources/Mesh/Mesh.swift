@@ -160,20 +160,40 @@ extension Mesh {
         }
     }
 
+    /// The unit normal of each face, or of each vertex. Per `.face` it is the face's vector area,
+    /// `areas()`, at unit length. Per `.vertex` it sums, over every corner of a face at the vertex, the
+    /// cross product of the corner's two edges divided by the product of their squared lengths (Max's
+    /// weights, 1999), and takes the unit vector. When the vertex and the neighbours its edges reach lie on
+    /// one sphere, as on `sphere` and at the corners of a cube, that sum points along the sphere's own
+    /// normal exactly: inverting about the vertex carries the sphere onto a plane, and each corner's term is
+    /// the cross product of two inverted neighbours, so the terms add up to the area vector of a polygon in
+    /// that plane. Weighting by face area or by the angle at the corner leans where small and large faces
+    /// meet, as at a pole. A corner with an edge of zero length, or a term that is not finite, adds nothing.
     public func normals<Scalar: BinaryFloatingPoint>(
         per element: Element
     ) -> [Vector<3, Scalar>] where Vertex == Point<3, Scalar> {
-        let areas = areas()
         switch element {
         case .face:
-            return areas.map(Self.unit)
+            return areas().map(Self.unit)
 
         case .vertex:
             var sums = [Vector<3, Scalar>](repeating: Vector(repeating: 0), count: vertices.count)
-            zip(faces, areas).forEach { face, area in
-                face.vertices.forEach { index in
-                    let position = Int(bitPattern: index)
-                    sums[position] += area
+            faces.forEach { face in
+                let indices = face.vertices
+                let count = indices.count
+                indices.indices.forEach { corner in
+                    let here = vertices[indices[corner]].coordinates
+                    let next = vertices[indices[(corner + 1) % count]].coordinates - here
+                    let previous = vertices[indices[(corner + count - 1) % count]].coordinates - here
+                    let weight = next.dot(next) * previous.dot(previous)
+                    guard weight > 0, weight.isFinite else { return }
+                    let term = Vector<3, Scalar>(
+                        x: (next.y * previous.z - next.z * previous.y) / weight,
+                        y: (next.z * previous.x - next.x * previous.z) / weight,
+                        z: (next.x * previous.y - next.y * previous.x) / weight
+                    )
+                    guard term.x.isFinite, term.y.isFinite, term.z.isFinite else { return }
+                    sums[Int(bitPattern: indices[corner])] += term
                 }
             }
             return sums.map(Self.unit)

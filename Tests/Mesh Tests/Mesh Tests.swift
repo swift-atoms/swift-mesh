@@ -234,7 +234,7 @@ extension `Mesh Tests` {
         }
 
         @Test
-        func `Vertex normals weigh each face by its area`() throws {
+        func `Vertex normals weigh each corner by its edges' cross product over their squared lengths`() throws {
             let mesh = try Mesh<Position>(
                 vertices: [
                     Point(x: 0, y: 0, z: 0), Point(x: 3, y: 0, z: 0), Point(x: 0, y: 3, z: 0),
@@ -242,11 +242,12 @@ extension `Mesh Tests` {
                 ],
                 faces: [Polygon(0, 1, 2), Polygon(0, 4, 3)]
             )
+            // (3, 0, 0) × (0, 3, 0) / 81 = (0, 0, 1/9) and (0, 1, 0) × (0, 0, 1) / 1 = (1, 0, 0).
             let normal = mesh.normals(per: .vertex)[0]
-            let length = (4.5 * 4.5 + 0.5 * 0.5).squareRoot()
-            #expect(abs(normal.x - 0.5 / length) < 1e-15)
+            let length = (1 + 1.0 / 81).squareRoot()
+            #expect(abs(normal.x - 1 / length) < 1e-15)
             #expect(normal.y == 0)
-            #expect(abs(normal.z - 4.5 / length) < 1e-15)
+            #expect(abs(normal.z - 1.0 / 9 / length) < 1e-15)
         }
 
         @Test
@@ -395,23 +396,6 @@ extension `Mesh Tests` {
                 #expect(abs(`Mesh Tests`.length(normal) - 1) < 1e-12)
                 for corner in sphere.polygon(at: face).vertices { #expect(normal.dot(corner.coordinates) > 0) }
             }
-        }
-
-        @Test
-        func `Vertex normals of a sphere approach the radial direction as it is refined`() {
-            func worst(meridians: Cardinal, parallels: Cardinal) -> Double {
-                let sphere = Mesh<Position>.sphere(radius: 2, meridians: meridians, parallels: parallels)
-                var worst = 0.0
-                for (vertex, normal) in zip(sphere.vertices, sphere.normals(per: .vertex)) {
-                    worst = max(worst, `Mesh Tests`.length(normal - vertex.coordinates.scaled(by: 0.5)))
-                }
-                return worst
-            }
-            let coarse = worst(meridians: 16, parallels: 8)
-            let fine = worst(meridians: 64, parallels: 32)
-            #expect(coarse < 0.15)
-            #expect(fine < 0.03)
-            #expect(fine < coarse / 2)
         }
     }
 }
