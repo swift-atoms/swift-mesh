@@ -1,4 +1,4 @@
-description: "Indexed polygon meshes for Swift, generic over the vertex type, with normals and parametric surfaces: grid, torus, sphere, disk, Bézier patch and quads inside a planar outline."
+description: "Indexed polygon meshes for Swift, generic over the vertex type, with normals and parametric surfaces: grid, torus, sphere, disk, Bézier patch and quads inside a planar outline, and hexahedral volumes below a mesh or under an outline."
 topics:
   - primitives
   - mesh
