@@ -113,7 +113,9 @@ extension `Mesh Tests`.Outline {
             }
             // Counterclockwise around the grid: the inside is to the left of every edge.
             let middle = Plane(
-                x: (start.x + end.x) / 2 - (end.y - start.y) / 4, y: (start.y + end.y) / 2 + (end.x - start.x) / 4)
+                x: (start.x + end.x) / 2 - (end.y - start.y) / 4,
+                y: (start.y + end.y) / 2 + (end.x - start.x) / 4
+            )
             #expect(middle.x > 0 && middle.x < 4 && middle.y > 0 && middle.y < 3)
             ends[Int(bitPattern: edge.start), default: 0] += 1
             ends[Int(bitPattern: edge.end), default: 0] += 1
@@ -140,7 +142,8 @@ extension `Mesh Tests`.Outline {
     func `A disk welds at every seam: 5n² faces, 5n² + 2n + 1 vertices, and a disk's characteristic`(cells: Int) {
         let disk = Mesh<Plane>.disk(radius: 0.3, cells: Cardinal(UInt(cells)))
         #expect(disk.faces.count == 5 * cells * cells)
-        #expect(disk.vertices.count == 5 * cells * cells + 2 * cells + 1)
+        let vertices = 5 * cells * cells + 2 * cells + 1
+        #expect(disk.vertices.count == vertices)
         #expect(Self.characteristic(disk) == 1)
         #expect(Self.areas(disk).allSatisfy { $0 > 0 })
     }

@@ -342,7 +342,8 @@ extension `Mesh Tests` {
         @Test(arguments: [(3, 3), (8, 5), (24, 12)] as [(Cardinal, Cardinal)])
         func `A torus is a closed surface of genus one around the z axis`(segments: Cardinal, sides: Cardinal) {
             let torus = Mesh<Position>.torus(major: 3, minor: 1, segments: segments, sides: sides)
-            let count = Int(bitPattern: segments) * Int(bitPattern: sides)
+            let (around, across) = (Int(bitPattern: segments), Int(bitPattern: sides))
+            let count = around * across
             #expect(torus.vertices.count == count)
             #expect(torus.faces.count == count)
             #expect(torus.faces.allSatisfy { $0.vertexCount == 4 })

@@ -23,9 +23,10 @@ extension Mesh {
     ) throws(Error) where Vertex == Point<2, Scalar> {
         typealias Plane = Point<2, Scalar>
         typealias Offset = (x: Scalar, y: Scalar)
+        typealias Step = (curve: Int, step: Int, from: Offset, to: Offset)
 
         guard !outline.isEmpty,
-            outline.indices.allSatisfy({ outline[$0].start == outline[($0 + outline.count - 1) % outline.count].end })
+            zip(outline, outline.dropFirst() + outline.prefix(1)).allSatisfy({ $0.end == $1.start })
         else { throw .openOutline }
 
         func point(_ curve: Bezier<Plane>, _ parameter: Scalar) -> Plane {
@@ -34,57 +35,50 @@ extension Mesh {
         func offset(_ point: Plane) -> Offset { (point.x - centre.x, point.y - centre.y) }
         func cross(_ a: Offset, _ b: Offset) -> Scalar { a.x * b.y - a.y * b.x }
 
+        // WHY: steps as a list, not a walk taking a typed-throws closure: SILGen crash, swift-institute/Issues#340
         let samples = 64
-        func sampled(_ curves: [Bezier<Plane>]) -> [[Plane]] {
-            curves.map { curve in (0...samples).map { point(curve, Scalar($0) / Scalar(samples)) } }
-        }
-        var curves = outline
-        var points = sampled(curves)
-        func steps(_ body: (_ curve: Int, _ step: Int, _ from: Offset, _ to: Offset) throws(Error) -> Void)
-            throws(Error)
-        {
-            for (curve, row) in points.enumerated() {
-                for step in 0..<samples { try body(curve, step, offset(row[step]), offset(row[step + 1])) }
+        func steps(_ curves: [Bezier<Plane>]) -> [Step] {
+            curves.enumerated().flatMap { curve, bezier in
+                let row = (0...samples).map { offset(point(bezier, Scalar($0) / Scalar(samples))) }
+                return zip(row, row.dropFirst()).enumerated().map { step, pair in
+                    (curve: curve, step: step, from: pair.0, to: pair.1)
+                }
             }
         }
-
-        var area: Scalar = 0
-        try steps { _, _, from, to in area += cross(from, to) }
+        var curves = outline
+        var walk = steps(curves)
+        let area = walk.reduce(Scalar(0)) { $0 + cross($1.from, $1.to) }
         guard area.isFinite, area != 0 else { throw .outlineNotStarShaped }
         if area < 0 {
             curves = curves.reversed().map(\.reversed)
-            points = sampled(curves)
+            walk = steps(curves)
         }
 
-        // Seen whole: every step turns counterclockwise about the centre, and the steps pass the ray along +x once.
-        var turns = 0
-        try steps { _, _, from, to throws(Error) in
-            guard cross(from, to) > 0 else { throw .outlineNotStarShaped }
-            if from.y < 0, to.y >= 0, from.x + (to.x - from.x) * (-from.y / (to.y - from.y)) > 0 { turns += 1 }
-        }
-        guard turns == 1 else { throw .outlineNotStarShaped }
+        // WHY: seen whole, every step turns counterclockwise about the centre, and one step crosses the ray along +x
+        guard walk.allSatisfy({ cross($0.from, $0.to) > 0 }),
+            walk.filter({ step in
+                step.from.y < 0 && step.to.y >= 0
+                    && step.from.x + (step.to.x - step.from.x) * (-step.from.y / (step.to.y - step.from.y)) > 0
+            }).count == 1
+        else { throw .outlineNotStarShaped }
 
         /// Where the ray from the centre along `direction` crosses the outline: on the one step at which the cross
         /// product with the direction turns from not positive to positive, refined on its curve by halving.
         func crossing(_ direction: Offset) throws(Error) -> Plane {
-            for (curve, row) in points.enumerated() {
-                for step in 0..<samples
-                where cross(direction, offset(row[step])) <= 0 && cross(direction, offset(row[step + 1])) > 0 {
-                    var lower = Scalar(step) / Scalar(samples)
-                    var upper = Scalar(step + 1) / Scalar(samples)
-                    while true {
-                        let middle = (lower + upper) / 2
-                        guard middle > lower, middle < upper else { break }
-                        if cross(direction, offset(point(curves[curve], middle))) <= 0 {
-                            lower = middle
-                        } else {
-                            upper = middle
-                        }
-                    }
-                    return point(curves[curve], lower)
+            guard let found = walk.first(where: { cross(direction, $0.from) <= 0 && cross(direction, $0.to) > 0 })
+            else { throw .outlineNotStarShaped }
+            var lower = Scalar(found.step) / Scalar(samples)
+            var upper = Scalar(found.step + 1) / Scalar(samples)
+            while true {
+                let middle = (lower + upper) / 2
+                guard middle > lower, middle < upper else { break }
+                if cross(direction, offset(point(curves[found.curve], middle))) <= 0 {
+                    lower = middle
+                } else {
+                    upper = middle
                 }
             }
-            throw .outlineNotStarShaped
+            return point(curves[found.curve], lower)
         }
 
         let unit = Self.disk(radius: 1, cells: cells)
@@ -102,7 +96,11 @@ extension Mesh {
                 vertices.append(edge)
             } else {
                 vertices.append(
-                    Point(x: centre.x + share * (edge.x - centre.x), y: centre.y + share * (edge.y - centre.y)))
+                    Point(
+                        x: centre.x + share * (edge.x - centre.x),
+                        y: centre.y + share * (edge.y - centre.y)
+                    )
+                )
             }
         }
 

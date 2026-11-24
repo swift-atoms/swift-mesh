@@ -4,7 +4,8 @@ extension Mesh {
     ///
     /// A square of half-side 0.4 `radius` in the middle is cut into `cells` × `cells` quads, and each of the four
     /// regions between a side of the square and the circle into `cells` × `cells` more: each point of the side is
-    /// carried outward along its ray from the origin onto the circle, in `cells` equal steps. The five grids are
+    /// carried outward along its ray from the origin onto the circle, in `cells` equal steps. Each side's columns
+    /// run so that the column direction, then the outward one, turn counterclockwise. The five grids are
     /// welded, so the disk has 5 `cells`² faces and 5 `cells`² + 2 `cells` + 1 vertices, and its outline is 4
     /// `cells` edges with their vertices on the circle. Every face is counterclockwise.
     ///
@@ -20,12 +21,12 @@ extension Mesh {
         let count = Int(bitPattern: cells)
         let half = radius * 2 / 5
         func parameter(_ index: Ordinal) -> Scalar {
-            Scalar(2 * Int(bitPattern: index) - count) / Scalar(count)
+            let position = Int(bitPattern: index)
+            return Scalar(2 * position - count) / Scalar(count)
         }
         var disk = Self(columns: cells, rows: cells) { column, row in
             Point(x: half * parameter(column), y: half * parameter(row))
         }
-        // Each side's columns run so that the column direction, then the outward one, turn counterclockwise.
         let sides: [(Scalar) -> (x: Scalar, y: Scalar)] = [
             { t in (half, -(half * t)) },
             { t in (half * t, half) },
