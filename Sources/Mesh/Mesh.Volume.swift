@@ -29,7 +29,7 @@ extension Mesh {
 extension Mesh.Volume {
     /// Every cell turned inside out.
     @inlinable
-    public var reversed: Self { Self(validated: vertices, cells: cells.map(\.reversed)) }
+    public var reversed: Self { Self(validated: vertices, cells: cells.map { $0.reversed }) }
 
     /// The faces only one cell uses, compared without direction or starting corner, each as its cell gives it, in
     /// cell order and then in the order of `Cell.faces`, over the same vertices. When every cell is turned the right
@@ -245,7 +245,7 @@ extension Mesh.Volume {
                 }
             }
             let turned = Self(validated: vertices, cells: [made[0]]).volumes()[0] < 0
-            cellList.append(contentsOf: turned ? made.map(\.reversed) : made)
+            cellList.append(contentsOf: turned ? made.map { $0.reversed } : made)
         }
         return Self(validated: vertices, cells: cellList).welded
     }

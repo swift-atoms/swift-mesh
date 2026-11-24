@@ -18,7 +18,7 @@ extension Mesh {
     public static var empty: Self { Self(validated: [], faces: []) }
 
     @inlinable
-    public var reversed: Self { Self(validated: vertices, faces: faces.map(\.reversed)) }
+    public var reversed: Self { Self(validated: vertices, faces: faces.map { $0.reversed }) }
 
     @inlinable
     public var triangulated: Self {
@@ -361,7 +361,7 @@ extension Mesh {
         per span: Span = .cell,
         including: (_ column: Ordinal, _ row: Ordinal) throws(Failure) -> Bool
     ) throws(Failure) -> Self where Vertex == Point<3, Scalar> {
-        let corners = face.vertices.map(\.coordinates)
+        let corners = face.vertices.map { $0.coordinates }
         let width = Scalar(Int(bitPattern: columns))
         let height = Scalar(Int(bitPattern: rows))
         func point(_ u: Scalar, _ v: Scalar) -> Vertex {

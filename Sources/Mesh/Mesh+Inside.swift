@@ -61,7 +61,7 @@ extension Mesh {
             let area = walk.reduce(Scalar(0)) { $0 + Self.cross($1.from, $1.to) }
             guard area.isFinite, area != 0 else { throw .outlineNotStarShaped }
             if area < 0 {
-                curves = curves.reversed().map(\.reversed)
+                curves = curves.reversed().map { $0.reversed }
                 walk = Self.steps(curves, around: centre)
             }
             // WHY: seen whole, every step turns counterclockwise about the centre, and one step crosses the ray along +x
