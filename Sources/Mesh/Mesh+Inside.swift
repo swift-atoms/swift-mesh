@@ -47,15 +47,9 @@ extension Mesh {
     /// A closed outline seen whole from a centre, and where each ray from the centre crosses it.
     @usableFromInline
     internal struct Star<Scalar: BinaryFloatingPoint> {
-        @usableFromInline typealias Plane = Point<2, Scalar>
-        @usableFromInline typealias Offset = (x: Scalar, y: Scalar)
-        @usableFromInline typealias Step = (curve: Int, step: Int, from: Offset, to: Offset)
-
         @usableFromInline let curves: [Bezier<Plane>]
         @usableFromInline let centre: Plane
         @usableFromInline let walk: [Step]
-
-        @usableFromInline static var samples: Int { 64 }
 
         @inlinable
         init(_ outline: [Bezier<Plane>], around centre: Plane) throws(Error) {
@@ -81,65 +75,73 @@ extension Mesh {
             self.centre = centre
             self.walk = walk
         }
+    }
+}
 
-        @inlinable
-        static func point(_ curve: Bezier<Plane>, _ parameter: Scalar) -> Plane {
-            curve.value(at: parameter) { $0.interpolated(to: $1, at: $2) }
-        }
+extension Mesh.Star {
+    @usableFromInline typealias Plane = Point<2, Scalar>
+    @usableFromInline typealias Offset = (x: Scalar, y: Scalar)
+    @usableFromInline typealias Step = (curve: Int, step: Int, from: Offset, to: Offset)
 
-        @inlinable
-        static func cross(_ a: Offset, _ b: Offset) -> Scalar { a.x * b.y - a.y * b.x }
+    @usableFromInline static var samples: Int { 64 }
 
-        // WHY: steps as a list, not a walk taking a typed-throws closure: SILGen crash, swift-institute/Issues#340
-        @inlinable
-        static func steps(_ curves: [Bezier<Plane>], around centre: Plane) -> [Step] {
-            curves.enumerated().flatMap { curve, bezier in
-                let row = (0...samples).map { index in
-                    let point = point(bezier, Scalar(index) / Scalar(samples))
-                    return (x: point.x - centre.x, y: point.y - centre.y)
-                }
-                return zip(row, row.dropFirst()).enumerated().map { step, pair in
-                    (curve: curve, step: step, from: pair.0, to: pair.1)
-                }
+    @inlinable
+    static func point(_ curve: Bezier<Plane>, _ parameter: Scalar) -> Plane {
+        curve.value(at: parameter) { $0.interpolated(to: $1, at: $2) }
+    }
+
+    @inlinable
+    static func cross(_ a: Offset, _ b: Offset) -> Scalar { a.x * b.y - a.y * b.x }
+
+    // WHY: steps as a list, not a walk taking a typed-throws closure: SILGen crash, swift-institute/Issues#340
+    @inlinable
+    static func steps(_ curves: [Bezier<Plane>], around centre: Plane) -> [Step] {
+        curves.enumerated().flatMap { curve, bezier in
+            let row = (0...samples).map { index in
+                let point = point(bezier, Scalar(index) / Scalar(samples))
+                return (x: point.x - centre.x, y: point.y - centre.y)
+            }
+            return zip(row, row.dropFirst()).enumerated().map { step, pair in
+                (curve: curve, step: step, from: pair.0, to: pair.1)
             }
         }
+    }
 
-        /// Where the ray from the centre along `direction` crosses the outline: on the one step at which the cross
-        /// product with the direction turns from not positive to positive, refined on its curve by halving.
-        @inlinable
-        func crossing(_ direction: Offset) throws(Error) -> Plane {
-            func offset(_ point: Plane) -> Offset { (point.x - centre.x, point.y - centre.y) }
-            guard
-                let found = walk.first(where: {
-                    Self.cross(direction, $0.from) <= 0 && Self.cross(direction, $0.to) > 0
-                })
-            else { throw .outlineNotStarShaped }
-            var lower = Scalar(found.step) / Scalar(Self.samples)
-            var upper = Scalar(found.step + 1) / Scalar(Self.samples)
-            while true {
-                let middle = (lower + upper) / 2
-                guard middle > lower, middle < upper else { break }
-                if Self.cross(direction, offset(Self.point(curves[found.curve], middle))) <= 0 {
-                    lower = middle
-                } else {
-                    upper = middle
-                }
+    /// Where the ray from the centre along `direction` crosses the outline: on the one step at which the cross
+    /// product with the direction turns from not positive to positive, refined on its curve by halving.
+    @inlinable
+    func crossing(_ direction: Offset) throws(Mesh.Error) -> Plane {
+        func offset(_ point: Plane) -> Offset { (point.x - centre.x, point.y - centre.y) }
+        guard
+            let found = walk.first(where: {
+                Self.cross(direction, $0.from) <= 0 && Self.cross(direction, $0.to) > 0
+            })
+        else { throw .outlineNotStarShaped }
+        var lower = Scalar(found.step) / Scalar(Self.samples)
+        var upper = Scalar(found.step + 1) / Scalar(Self.samples)
+        while true {
+            let middle = (lower + upper) / 2
+            guard middle > lower, middle < upper else { break }
+            if Self.cross(direction, offset(Self.point(curves[found.curve], middle))) <= 0 {
+                lower = middle
+            } else {
+                upper = middle
             }
-            return Self.point(curves[found.curve], lower)
         }
+        return Self.point(curves[found.curve], lower)
+    }
 
-        /// The point (x, y) of the unit disk carried onto the outline: a share |(x, y)| of the way from the centre
-        /// to where the ray through it crosses the outline, or that crossing itself when `rim`.
-        @inlinable
-        func carry(_ x: Scalar, _ y: Scalar, onto rim: Bool) throws(Error) -> Plane {
-            let share = (x * x + y * y).squareRoot()
-            guard share > 0 else { return centre }
-            let edge = try crossing((x, y))
-            guard !rim else { return edge }
-            return Point(
-                x: centre.x + share * (edge.x - centre.x),
-                y: centre.y + share * (edge.y - centre.y)
-            )
-        }
+    /// The point (x, y) of the unit disk carried onto the outline: a share |(x, y)| of the way from the centre
+    /// to where the ray through it crosses the outline, or that crossing itself when `rim`.
+    @inlinable
+    func carry(_ x: Scalar, _ y: Scalar, onto rim: Bool) throws(Mesh.Error) -> Plane {
+        let share = (x * x + y * y).squareRoot()
+        guard share > 0 else { return centre }
+        let edge = try crossing((x, y))
+        guard !rim else { return edge }
+        return Point(
+            x: centre.x + share * (edge.x - centre.x),
+            y: centre.y + share * (edge.y - centre.y)
+        )
     }
 }

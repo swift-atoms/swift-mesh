@@ -148,7 +148,7 @@ extension Mesh.Volume {
         let width = top.vertices.count
         var vertices: [Vertex] = []
         vertices.reserveCapacity(width * (count + 1))
-        for layer in 0...count {
+        (0...count).forEach { layer in
             let share = Scalar(-layer) / Scalar(count)
             zip(top.vertices, depths).forEach { point, depth in
                 vertices.append(Point(x: point.x, y: point.y, z: depth * share))
@@ -156,7 +156,7 @@ extension Mesh.Volume {
         }
         var cells: [Cell] = []
         cells.reserveCapacity(top.faces.count * count)
-        for layer in 0..<count {
+        (0..<count).forEach { layer in
             top.faces.forEach { face in
                 let upper = face.vertices.map { Self.index(layer * width + Int(bitPattern: $0)) }
                 let lower = face.vertices.map { Self.index((layer + 1) * width + Int(bitPattern: $0)) }
@@ -223,18 +223,18 @@ extension Mesh.Volume {
         let lines = count + 1
         for block in blocks {
             let start = vertices.count
-            for k in 0...count {
-                for j in 0...count {
-                    for i in 0...count { vertices.append(block(i, j, k)) }
+            (0...count).forEach { k in
+                (0...count).forEach { j in
+                    (0...count).forEach { i in vertices.append(block(i, j, k)) }
                 }
             }
             func at(_ i: Int, _ j: Int, _ k: Int) -> Index<Vertex> {
                 Self.index(start + (k * lines + j) * lines + i)
             }
             var made: [Cell] = []
-            for k in 0..<count {
-                for j in 0..<count {
-                    for i in 0..<count {
+            (0..<count).forEach { k in
+                (0..<count).forEach { j in
+                    (0..<count).forEach { i in
                         made.append(
                             Cell(validated: [
                                 at(i, j, k), at(i + 1, j, k), at(i + 1, j + 1, k), at(i, j + 1, k),
